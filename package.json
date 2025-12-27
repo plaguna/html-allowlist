@@ -1,0 +1,62 @@
+{
+  "name": "html-allowlist",
+  "version": "0.1.0",
+  "description": "HTML sanitizer with an explicit allowlist rule language",
+  "license": "MIT",
+  "author": "Pedro Laguna <plaguna@users.noreply.github.com>",
+  "keywords": [
+    "html",
+    "sanitize",
+    "security",
+    "xss",
+    "allowlist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/plaguna/html-allowlist.git"
+  },
+  "homepage": "https://github.com/plaguna/html-allowlist#readme",
+  "bugs": {
+    "url": "https://github.com/plaguna/html-allowlist/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "browser": "./dist/index.browser.js",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "SECURITY.md"
+  ],
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepublishOnly": "npm run build",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "dompurify": "^3.1.6",
+    "happy-dom": "^20.0.11",
+    "postcss": "^8.4.47",
+    "postcss-value-parser": "^4.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "fast-check": "^3.23.2",
+    "typescript": "^5.6.3",
+    "vitest": "^4.0.16"
+  }
+}
