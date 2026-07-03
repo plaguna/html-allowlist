@@ -209,8 +209,48 @@ function getDomWindow(): Window {
   return fallbackWindow;
 }
 
+/**
+ * happy-dom hardcodes `Node.prototype.nodeName` to return "" and shadows it
+ * per subclass (Element, Comment, …). Browsers instead implement it as a
+ * single getter on Node.prototype that works for every node type. DOMPurify
+ * >=3.4.6 caches that base getter to defeat DOM clobbering, so under
+ * happy-dom every element reads as nodeName "" and gets removed (and the
+ * child-hoisting fallback crashes happy-dom at document level).
+ *
+ * Make the base getter spec-compliant: delegate to the most-derived shadowing
+ * getter for the instance, exactly what plain `.nodeName` access resolves to.
+ * Observable behavior of normal property access is unchanged; the patch is
+ * probe-guarded and idempotent.
+ */
+function ensureSpecCompliantNodeName(domWindow: Window): void {
+  const nodeProto = (domWindow as unknown as { Node?: { prototype: object } }).Node?.prototype;
+  const doc = (domWindow as unknown as { document?: Document }).document;
+  if (!nodeProto || !doc) return;
+  const baseDesc = Object.getOwnPropertyDescriptor(nodeProto, "nodeName");
+  if (!baseDesc?.get || !baseDesc.configurable) return;
+
+  const probe = doc.createElement("div");
+  if (baseDesc.get.call(probe) === probe.nodeName) return;
+
+  const baseGet = baseDesc.get;
+  Object.defineProperty(nodeProto, "nodeName", {
+    configurable: true,
+    enumerable: baseDesc.enumerable,
+    get(this: Node) {
+      let proto = Object.getPrototypeOf(this) as object | null;
+      while (proto && proto !== nodeProto) {
+        const desc = Object.getOwnPropertyDescriptor(proto, "nodeName");
+        if (desc?.get) return desc.get.call(this);
+        proto = Object.getPrototypeOf(proto);
+      }
+      return baseGet.call(this);
+    }
+  });
+}
+
 function applyDomPurify(html: string, policy: CompiledPolicy): string {
   const domWindow = getDomWindow();
+  ensureSpecCompliantNodeName(domWindow);
   if (!cachedPurify || (cachedPurify.window as unknown) !== (domWindow as unknown)) {
     cachedPurify = {
       window: domWindow as unknown as WindowLike,

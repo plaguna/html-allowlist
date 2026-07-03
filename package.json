@@ -1,6 +1,6 @@
 {
   "name": "html-allowlist",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "HTML sanitizer with an explicit allowlist rule language",
   "license": "MIT",
   "author": "Pedro Laguna <plaguna@users.noreply.github.com>",
@@ -38,7 +38,8 @@
     "dist",
     "README.md",
     "LICENSE",
-    "SECURITY.md"
+    "SECURITY.md",
+    "CHANGELOG.md"
   ],
   "type": "module",
   "scripts": {
@@ -48,8 +49,8 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "dompurify": "^3.1.6",
-    "happy-dom": "^20.0.11",
+    "dompurify": "^3.4.11",
+    "happy-dom": "^20.10.6",
     "postcss": "^8.4.47",
     "postcss-value-parser": "^4.2.0"
   },
