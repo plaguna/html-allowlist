@@ -3,6 +3,7 @@ name: npm publish
 on:
   release:
     types: [created]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -31,6 +32,8 @@ jobs:
           node-version: 22
           registry-url: "https://registry.npmjs.org"
           cache: npm
+      # npm trusted publishing (OIDC) needs npm >= 11.5; Node 22 bundles npm 10
+      - run: npm install -g npm@latest
       - run: npm ci
       - run: npm run build
       - run: npm publish --provenance --access public
