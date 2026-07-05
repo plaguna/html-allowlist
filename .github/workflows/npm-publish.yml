@@ -25,6 +25,7 @@ jobs:
   publish-npm:
     needs: build
     runs-on: ubuntu-latest
+    environment: html-allowlist
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
