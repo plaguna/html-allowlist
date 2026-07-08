@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { compileRules, sanitize, sanitizeWithPolicy } from "../src/index.js";
+import { ConvergenceError, compileRules, sanitize, sanitizeWithPolicy } from "../src/index.js";
 
 function bodyFrom(html: string): HTMLElement {
   const parser = new DOMParser();
@@ -31,8 +31,13 @@ describe("sanitize", () => {
     expect(bodyFrom(output).innerHTML).toBe("<a>ok</a>");
   });
 
-  test("returns a full document with html, head, and body", () => {
+  test("defaults to a body fragment", () => {
     const output = sanitize("<p>ok</p>", ["html", "head", "body", "p"]);
+    expect(output).toBe("<p>ok</p>");
+  });
+
+  test("returns a full document when outputFormat is document", () => {
+    const output = sanitize("<p>ok</p>", ["html", "head", "body", "p"], { outputFormat: "document" });
     expect(output).toBe("<html><head></head><body><p>ok</p></body></html>");
   });
 
@@ -40,7 +45,7 @@ describe("sanitize", () => {
     const original = globalThis.DOMParser;
     (globalThis as { DOMParser?: typeof DOMParser }).DOMParser = undefined;
     try {
-      const output = sanitize("<p>ok</p>", ["p"]);
+      const output = sanitize("<p>ok</p>", ["p"], { outputFormat: "document" });
       expect(output).toBe("<html><head></head><body><p>ok</p></body></html>");
     } finally {
       (globalThis as { DOMParser?: typeof DOMParser }).DOMParser = original;
@@ -121,9 +126,9 @@ describe("sanitize", () => {
     expect(css).not.toContain("url(");
   });
 
-  test("strips event handlers and javascript: URLs when allowJavaScript is false", () => {
+  test("strips event handlers and javascript: URLs when dangerouslyAllowJavaScript is false", () => {
     const input = "<a href=\"javascript:alert(1)\" onclick=\"alert(2)\">x</a>";
-    const output = sanitize(input, ["a", "a|href"], { allowJavaScript: false });
+    const output = sanitize(input, ["a", "a|href"], { dangerouslyAllowJavaScript: false });
     const anchor = firstTag(output, "a");
     expect(anchor?.hasAttribute("onclick")).toBe(false);
     expect(anchor?.getAttribute("href") ?? "").not.toMatch(/^javascript:/i);
@@ -132,7 +137,7 @@ describe("sanitize", () => {
   test("blocks javascript: URLs hidden by whitespace or control characters", () => {
     const input =
       "<a href=\" java\\nscript:alert(1)\">x</a><a href=\"java\\t\\rscript:alert(2)\">y</a>";
-    const output = sanitize(input, ["a", "a", "a|href"], { allowJavaScript: false });
+    const output = sanitize(input, ["a", "a", "a|href"], { dangerouslyAllowJavaScript: false });
     const anchors = Array.from(bodyFrom(output).querySelectorAll("a"));
     expect(anchors).toHaveLength(2);
     for (const anchor of anchors) {
@@ -145,7 +150,7 @@ describe("sanitize", () => {
     const input =
       "<a href=\"JaVaScRiPt:alert(1)\">x</a>" +
       "<a href=\"jav&#x61;script:alert(2)\">y</a>";
-    const output = sanitize(input, ["a", "a", "a|href"], { allowJavaScript: false });
+    const output = sanitize(input, ["a", "a", "a|href"], { dangerouslyAllowJavaScript: false });
     const anchors = Array.from(bodyFrom(output).querySelectorAll("a"));
     expect(anchors).toHaveLength(2);
     for (const anchor of anchors) {
@@ -174,7 +179,7 @@ describe("sanitize", () => {
       "img|srcset",
       "img|poster"
     ];
-    const output = sanitize(input, rules, { allowJavaScript: false });
+    const output = sanitize(input, rules, { dangerouslyAllowJavaScript: false });
     const body = bodyFrom(output);
     expect(body.querySelector("form")?.hasAttribute("action")).toBe(false);
     expect(body.querySelector("button")?.hasAttribute("formaction")).toBe(false);
@@ -204,7 +209,7 @@ describe("sanitize", () => {
       "img|srcset",
       "img|poster"
     ];
-    const output = sanitize(input, rules, { allowJavaScript: false });
+    const output = sanitize(input, rules, { dangerouslyAllowJavaScript: false });
     const body = bodyFrom(output);
     expect(body.querySelector("form")?.getAttribute("action")).toBe("/submit");
     expect(body.querySelector("button")?.getAttribute("formaction")).toBe("https://example.com/submit");
@@ -240,7 +245,7 @@ describe("sanitize", () => {
       "img|srcset",
       "img|poster"
     ];
-    const output = sanitize(input, rules, { allowJavaScript: false });
+    const output = sanitize(input, rules, { dangerouslyAllowJavaScript: false });
     const body = bodyFrom(output);
     for (const element of Array.from(body.querySelectorAll("*"))) {
       for (const attr of Array.from(element.attributes)) {
@@ -285,7 +290,7 @@ describe("sanitize", () => {
       "image",
       "image|href"
     ];
-    const output = sanitize(input, rules, { allowJavaScript: false });
+    const output = sanitize(input, rules, { dangerouslyAllowJavaScript: false, outputFormat: "document" });
     const doc = new DOMParser().parseFromString(output, "text/html");
     const link = doc.querySelector("link");
     const object = doc.querySelector("object");
@@ -329,7 +334,7 @@ describe("sanitize", () => {
       "image",
       "image|href"
     ];
-    const output = sanitize(input, rules, { allowJavaScript: false });
+    const output = sanitize(input, rules, { dangerouslyAllowJavaScript: false, outputFormat: "document" });
     const doc = new DOMParser().parseFromString(output, "text/html");
     const link = doc.querySelector("link");
     const object = doc.querySelector("object");
@@ -343,49 +348,100 @@ describe("sanitize", () => {
     expect(image?.getAttribute("href")).toBe("https://example.com/image.svg");
   });
 
-  test("applies DOMPurify to strip dangerous SVG attributes when allowJavaScript is false", () => {
+  test("applies DOMPurify to strip dangerous SVG attributes when dangerouslyAllowJavaScript is false", () => {
     const input = "<svg><a xlink:href=\"javascript:alert(1)\">x</a></svg>";
     const rules = ["svg", "a", "a|xlink:href"];
-    const output = sanitize(input, rules, { allowJavaScript: false });
+    const output = sanitize(input, rules, { dangerouslyAllowJavaScript: false });
     const svg = firstTag(output, "svg");
     const anchor = svg?.querySelector("a");
     expect(anchor?.hasAttribute("xlink:href")).toBe(false);
     expect(output.toLowerCase()).not.toContain("javascript:");
   });
 
-  test("removes event handler attributes even if explicitly allowed when allowJavaScript is false", () => {
+  test("removes event handler attributes even if explicitly allowed when dangerouslyAllowJavaScript is false", () => {
     const input = "<a onclick=\"alert(1)\">x</a>";
-    const output = sanitize(input, ["a", "a|onclick"], { allowJavaScript: false });
+    const output = sanitize(input, ["a", "a|onclick"], { dangerouslyAllowJavaScript: false });
     const anchor = firstTag(output, "a");
     expect(anchor?.hasAttribute("onclick")).toBe(false);
   });
 
-  test("removes script tags when allowJavaScript is false, even if rules include script", () => {
+  test("removes script tags when dangerouslyAllowJavaScript is false, even if rules include script", () => {
     const input = "<script>alert(1)</script><p>ok</p>";
-    const output = sanitize(input, ["script", "p"], { allowJavaScript: false });
+    const output = sanitize(input, ["script", "p"], { dangerouslyAllowJavaScript: false });
     expect(firstTag(output, "script")).toBe(null);
     expect(firstTag(output, "p")?.textContent).toBe("ok");
   });
 
-  test("keeps script tags when allowJavaScript is true and explicitly allowed", () => {
+  test("keeps script tags when dangerouslyAllowJavaScript is true and explicitly allowed", () => {
     const input = "<script>alert(1)</script>";
-    const output = sanitize(input, ["script"], { allowJavaScript: true });
+    const output = sanitize(input, ["script"], { dangerouslyAllowJavaScript: true });
     expect(firstTag(output, "script")?.textContent).toBe("alert(1)");
   });
 
-  test("strips disallowed SVG attributes even when allowJavaScript is true", () => {
+  test("strips disallowed SVG attributes even when dangerouslyAllowJavaScript is true", () => {
     const input = "<svg><a xlink:href=\"javascript:alert(1)\">x</a></svg>";
-    const output = sanitize(input, ["svg", "a"], { allowJavaScript: true });
+    const output = sanitize(input, ["svg", "a"], { dangerouslyAllowJavaScript: true });
     const svg = firstTag(output, "svg");
     const anchor = svg?.querySelector("a");
     expect(anchor?.hasAttribute("xlink:href")).toBe(false);
   });
 
+  // dangerouslyAllowJavaScript is the documented escape hatch. It turns OFF
+  // two default safety nets (on* stripping and <script> removal) and skips the
+  // library's own javascript:/data: URL pre-filter -- but DOMPurify still runs
+  // as an independent second layer, so dangerous URL schemes stay blocked
+  // either way. These tests pin that exact contract so it cannot drift
+  // silently: the two disabled nets let script/handlers through only where the
+  // rules admit them, while the DOMPurify URL backstop keeps holding.
+  describe("dangerouslyAllowJavaScript: true relaxes the JS safety nets", () => {
+    test("safety net 1 (on* stripping) is off: an allowlisted event handler survives", () => {
+      const input = "<a onclick=\"alert(1)\">x</a>";
+      const output = sanitize(input, ["a", "a|onclick"], { dangerouslyAllowJavaScript: true });
+      expect(firstTag(output, "a")?.getAttribute("onclick")).toBe("alert(1)");
+    });
+
+    test("but on* is still gated by the rules: a non-allowlisted handler is dropped", () => {
+      const input = "<a onclick=\"alert(1)\">x</a>";
+      const output = sanitize(input, ["a"], { dangerouslyAllowJavaScript: true });
+      expect(firstTag(output, "a")?.hasAttribute("onclick")).toBe(false);
+    });
+
+    test("safety net 2 (<script> removal) is off: an allowlisted script survives", () => {
+      const input = "<script>alert(1)</script>";
+      const output = sanitize(input, ["script"], { dangerouslyAllowJavaScript: true });
+      expect(firstTag(output, "script")?.textContent).toBe("alert(1)");
+    });
+
+    test("but <script> is still gated by the rules: a non-allowlisted script is removed", () => {
+      const input = "<p><script>alert(1)</script>ok</p>";
+      const output = sanitize(input, ["p"], { dangerouslyAllowJavaScript: true });
+      expect(firstTag(output, "script")).toBe(null);
+    });
+
+    test("URL backstop holds: a javascript: URL is still stripped by DOMPurify even with the flag on", () => {
+      const input = "<a href=\"javascript:alert(1)\">x</a>";
+      const output = sanitize(input, ["a", "a|href"], { dangerouslyAllowJavaScript: true });
+      expect(firstTag(output, "a")?.hasAttribute("href")).toBe(false);
+    });
+
+    test("URL backstop holds: a data: URL is still stripped by DOMPurify even with the flag on", () => {
+      const input = "<a href=\"data:text/html,<b>x</b>\">x</a>";
+      const output = sanitize(input, ["a", "a|href"], { dangerouslyAllowJavaScript: true });
+      expect(firstTag(output, "a")?.hasAttribute("href")).toBe(false);
+    });
+
+    test("safe-scheme URLs on an allowlisted attribute still pass through with the flag on", () => {
+      const input = "<a href=\"https://example.com/\">x</a>";
+      const output = sanitize(input, ["a", "a|href"], { dangerouslyAllowJavaScript: true });
+      expect(firstTag(output, "a")?.getAttribute("href")).toBe("https://example.com/");
+    });
+  });
+
   test("is idempotent once sanitized", () => {
     const input = "<p><a href=\"javascript:alert(1)\">x</a><a>y</a></p>";
     const rules = ["p", "a"];
-    const once = sanitize(input, rules, { allowJavaScript: false });
-    const twice = sanitize(once, rules, { allowJavaScript: false });
+    const once = sanitize(input, rules, { dangerouslyAllowJavaScript: false });
+    const twice = sanitize(once, rules, { dangerouslyAllowJavaScript: false });
     expect(twice).toBe(once);
   });
 
@@ -473,17 +529,81 @@ describe("sanitize", () => {
     expect(bodyFrom(output).innerHTML).toBe("<div><a>one</a><div></div></div>");
   });
 
-  test("does not allow data URLs with script payloads when allowJavaScript is false", () => {
+  test("does not allow data URLs with script payloads when dangerouslyAllowJavaScript is false", () => {
     const input = "<a href=\"data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==\">x</a>";
-    const output = sanitize(input, ["a", "a|href"], { allowJavaScript: false });
+    const output = sanitize(input, ["a", "a|href"], { dangerouslyAllowJavaScript: false });
     const anchor = firstTag(output, "a");
     expect(anchor?.getAttribute("href") ?? "").not.toMatch(/^data:/i);
+  });
+
+  describe("allowDataImageUrls", () => {
+    const PNG = "data:image/png;base64,iVBORw0KGgo=";
+
+    test("blocks data:image URLs on img|src by default", () => {
+      const output = sanitize(`<img src="${PNG}">`, ["img", "img|src"]);
+      expect(firstTag(output, "img")?.hasAttribute("src")).toBe(false);
+    });
+
+    test("allows a safe raster data:image URL on img|src when enabled", () => {
+      const output = sanitize(`<img src="${PNG}">`, ["img", "img|src"], { allowDataImageUrls: true });
+      expect(firstTag(output, "img")?.getAttribute("src")).toBe(PNG);
+    });
+
+    test("allows a safe raster data:image URL on img|srcset when enabled", () => {
+      const output = sanitize(`<img srcset="${PNG} 1x">`, ["img", "img|srcset"], { allowDataImageUrls: true });
+      expect(firstTag(output, "img")?.getAttribute("srcset")).toBe(`${PNG} 1x`);
+    });
+
+    test("keeps a data:image entry alongside a normal URL in srcset", () => {
+      const input = `<img srcset="${PNG} 1x, https://example.com/b.png 2x">`;
+      const output = sanitize(input, ["img", "img|srcset"], { allowDataImageUrls: true });
+      expect(firstTag(output, "img")?.getAttribute("srcset")).toBe(`${PNG} 1x, https://example.com/b.png 2x`);
+    });
+
+    test("still strips the whole srcset if any entry is dangerous, even with a safe data:image entry present", () => {
+      const input = `<img srcset="${PNG} 1x, javascript:alert(1) 2x">`;
+      const output = sanitize(input, ["img", "img|srcset"], { allowDataImageUrls: true });
+      expect(firstTag(output, "img")?.hasAttribute("srcset")).toBe(false);
+    });
+
+    test("never allows image/svg+xml through, even when enabled", () => {
+      const output = sanitize('<img src="data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=">', ["img", "img|src"], {
+        allowDataImageUrls: true
+      });
+      expect(firstTag(output, "img")?.hasAttribute("src")).toBe(false);
+    });
+
+    test("never allows data:text/html through, even when enabled", () => {
+      const output = sanitize('<img src="data:text/html,<script>alert(1)</script>">', ["img", "img|src"], {
+        allowDataImageUrls: true
+      });
+      expect(firstTag(output, "img")?.hasAttribute("src")).toBe(false);
+    });
+
+    test("is scoped to img|src and img|srcset, not other tags or attributes", () => {
+      const output = sanitize(`<a href="${PNG}">x</a>`, ["a", "a|href"], { allowDataImageUrls: true });
+      expect(firstTag(output, "a")?.hasAttribute("href")).toBe(false);
+    });
+
+    test("matches MIME type case-insensitively and ignores surrounding whitespace", () => {
+      const output = sanitize(`<img src=" DATA:IMAGE/PNG;BASE64,iVBORw0KGgo=">`, ["img", "img|src"], {
+        allowDataImageUrls: true
+      });
+      expect(firstTag(output, "img")?.hasAttribute("src")).toBe(true);
+    });
+
+    test("blocks a data: URL with no comma (malformed) even when enabled", () => {
+      const output = sanitize('<img src="data:image/png;base64">', ["img", "img|src"], {
+        allowDataImageUrls: true
+      });
+      expect(firstTag(output, "img")?.hasAttribute("src")).toBe(false);
+    });
   });
 
   test("sanitizeWithPolicy matches sanitize output", () => {
     const input = "<style>.header{margin:0}</style><a href=\"https://example.com\">x</a>";
     const rules = ["style", "style|.header|margin", "a", "a|href"];
-    const config = { allowCommonAttributes: true, allowJavaScript: false };
+    const config = { allowCommonAttributes: true, dangerouslyAllowJavaScript: false };
     const policy = compileRules(rules, config);
     expect(sanitizeWithPolicy(input, policy)).toBe(sanitize(input, rules, config));
   });
@@ -501,5 +621,63 @@ describe("sanitize", () => {
     const input = "<p>keep</p><span data-x=\"1\"><em>more</em> text</span><p>drop</p>";
     const output = sanitize(input, ["p"]);
     expect(bodyFrom(output).innerHTML).toBe("<p>keep</p>more text");
+  });
+
+  test("outputFormat fragment omits the html/head/body wrapper", () => {
+    const output = sanitize("<p>ok</p>", ["p"], { outputFormat: "fragment" });
+    expect(output).toBe("<p>ok</p>");
+  });
+
+  test("outputFormat document keeps the html/head/body wrapper", () => {
+    const output = sanitize("<p>ok</p>", ["p"], { outputFormat: "document" });
+    expect(output).toBe("<html><head></head><body><p>ok</p></body></html>");
+  });
+
+  test("sanitizeWithPolicy honors outputFormat from compileRules config", () => {
+    const policy = compileRules(["p"], { outputFormat: "document" });
+    const output = sanitizeWithPolicy("<p>ok</p>", policy);
+    expect(output).toBe("<html><head></head><body><p>ok</p></body></html>");
+  });
+
+  test("fragment output stays idempotent", () => {
+    const input = "<p><a href=\"javascript:alert(1)\">x</a><a>y</a></p>";
+    const rules = ["p", "a"];
+    const once = sanitize(input, rules, { dangerouslyAllowJavaScript: false });
+    const twice = sanitize(once, rules, { dangerouslyAllowJavaScript: false });
+    expect(twice).toBe(once);
+  });
+});
+
+describe("convergence", () => {
+  // The sanitizer re-runs until output reaches a fixed point. If it cannot
+  // within maxPasses, it throws ConvergenceError rather than returning a
+  // result it had not finished transforming. maxPasses of 1 can never confirm
+  // a fixed point (one pass to transform, a second to confirm no change), so
+  // it always throws -- the default of 10 leaves ample room.
+  test("throws ConvergenceError when maxPasses is too low to confirm a fixed point", () => {
+    expect(() => sanitize("<p>ok</p>", ["p"], { maxPasses: 1 })).toThrow(ConvergenceError);
+  });
+
+  test("the thrown error names itself and reports the pass budget", () => {
+    try {
+      sanitize("<div><script>x</script><p>hi</p></div>", ["div", "p"], { maxPasses: 1 });
+      expect.unreachable("expected ConvergenceError");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConvergenceError);
+      expect((error as ConvergenceError).name).toBe("ConvergenceError");
+      expect((error as ConvergenceError).passes).toBe(1);
+    }
+  });
+
+  test("raising maxPasses lets the same input converge instead of throwing", () => {
+    const input = "<div><script>x</script><p>hi</p></div>";
+    expect(() => sanitize(input, ["div", "p"], { maxPasses: 1 })).toThrow(ConvergenceError);
+    expect(sanitize(input, ["div", "p"], { maxPasses: 2 })).toBe("<div><p>hi</p></div>");
+  });
+
+  test("does not throw for ordinary documents at the default budget", () => {
+    const input = "<div><h1>Title</h1><p>Intro <b>text</b> and <a href=\"https://x.example\">link</a></p></div>";
+    const rules = ["div", "h1", "p", "b", "a", "a|href"];
+    expect(() => sanitize(input, rules, { allowCommonAttributes: true })).not.toThrow();
   });
 });

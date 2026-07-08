@@ -4,6 +4,10 @@ on:
   push:
     branches: ["**"]
   pull_request:
+  schedule:
+    # Weekly run so upstream dompurify/happy-dom breakage surfaces even
+    # when the repository is quiet.
+    - cron: "0 6 * * 1"
 
 jobs:
   test:
@@ -11,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: [18, 20, 22]
+        node-version: [22, 24]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -21,3 +25,19 @@ jobs:
       - run: npm ci
       - run: npm run test
       - run: npm run build
+
+  # The sanitizer depends on DOMPurify internals cooperating with happy-dom
+  # (see the nodeName getter patch in src/core.ts). Test against the newest
+  # releases so an upstream change breaks this job instead of users.
+  latest-deps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm install --no-save dompurify@latest happy-dom@latest postcss@latest postcss-value-parser@latest
+      - run: npm ls dompurify happy-dom postcss
+      - run: npm run test

@@ -127,8 +127,8 @@ describe("real-world HTML fixtures", () => {
     test(`sanitizes ${fixture} safely`, () => {
       const html = readFileSync(join(FIXTURES_DIR, fixture), "utf-8");
       const rules = buildRulesFromHtml(html);
-      const output = sanitize(html, rules, { allowJavaScript: false });
-      const second = sanitize(output, rules, { allowJavaScript: false });
+      const output = sanitize(html, rules, { dangerouslyAllowJavaScript: false });
+      const second = sanitize(output, rules, { dangerouslyAllowJavaScript: false });
 
       expect(second).toBe(output);
       assertSafeOutput(output);

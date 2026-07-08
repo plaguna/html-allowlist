@@ -73,8 +73,13 @@ const rulesArb = fc.array(
 
 const configArb = fc.record({
   allowCommonAttributes: fc.boolean(),
-  allowJavaScript: fc.constant(false),
-  maxPasses: fc.integer({ min: 1, max: 6 })
+  dangerouslyAllowJavaScript: fc.constant(false),
+  // Give every generated document room to reach a fixed point. A budget below
+  // 2 cannot converge on input that needs cleaning (one pass to clean, one to
+  // confirm), and would throw ConvergenceError; these properties are about the
+  // converged output, so keep the budget comfortably above the convergence
+  // depth of the generated corpus.
+  maxPasses: fc.integer({ min: 6, max: 12 })
 });
 
 const propertyOptions = { seed: 42, numRuns: 250 };
