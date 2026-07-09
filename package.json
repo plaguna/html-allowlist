@@ -1,6 +1,6 @@
 {
   "name": "html-allowlist",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "HTML sanitizer with an explicit allowlist rule language",
   "license": "MIT",
   "author": "Pedro Laguna <plaguna@users.noreply.github.com>",
