@@ -189,6 +189,26 @@ describe("sanitize", () => {
     expect(body.querySelector("img")?.hasAttribute("poster")).toBe(false);
   });
 
+  // Found by the Jazzer.js fuzz target (fuzz/sanitize.fuzz.js): isDangerousUrl
+  // only checked "javascript:"/"data:", relying on DOMPurify's default scheme
+  // regex to reject "vbscript:" incidentally. That held for a single-candidate
+  // srcset value, but a malformed multi-candidate one let a vbscript: entry
+  // through DOMPurify's own srcset validation while an otherwise-identical
+  // javascript: entry in the same shape was still caught -- so the backstop
+  // wasn't reliable. vbscript: is IE-only and long dead, but the check is free.
+  test("blocks vbscript: URLs alongside javascript:", () => {
+    expect(sanitize('<a href="vbscript:msgbox(1)">x</a>', ["a", "a|href"])).toBe("<a>x</a>");
+  });
+
+  test("blocks a vbscript: candidate in a malformed multi-candidate srcset", () => {
+    const input =
+      '<img srcset="data:image/png;base64,AAAA 1x,' +
+      "<<<<<<<<<<<<<<< data:image/svg+xml;base64,BBBB 2x,BBBB 2x," +
+      'vbscript:msgbox(1) 3x">';
+    const output = sanitize(input, ["img", "img|srcset"], { allowDataImageUrls: true });
+    expect(output).not.toContain("vbscript:");
+  });
+
   test("keeps safe values for other URL-bearing attributes", () => {
     const input =
       "<form action=\"/submit\"><button formaction=\"https://example.com/submit\">go</button></form>" +
@@ -680,4 +700,123 @@ describe("convergence", () => {
     const rules = ["div", "h1", "p", "b", "a", "a|href"];
     expect(() => sanitize(input, rules, { allowCommonAttributes: true })).not.toThrow();
   });
+});
+
+// Found by the Jazzer.js fuzz target (fuzz/sanitize.fuzz.js).
+//
+// `collectElements` used to read `.content` on every element in order to
+// descend into <template> content. That property is meaningful only on
+// <template>. A <form> exposes its controls as named properties, so
+// `form.content` performs a named-item lookup instead of returning undefined;
+// happy-dom implements that lookup by interpolating the form's id into a CSS
+// selector without escaping it, so an id of `"` yields `input[form="""]` and
+// throws a DOMException. The crash was reachable with an empty rule list --
+// no policy could prevent it -- making it a denial-of-service on any caller
+// that passes untrusted HTML to sanitize().
+describe("traversal is robust against form named-property access", () => {
+  const HOSTILE_FORMS = [
+    "<form id=&quot;></form>",
+    "<form id=&quot;><input name=x></form>",
+    "<form name=&quot;></form>",
+    "<div><form id=&quot;></form></div>",
+    "<template><form id=&quot;></form></template>"
+  ];
+
+  for (const html of HOSTILE_FORMS) {
+    test(`traversal does not throw on ${html}`, () => {
+      // An empty rule list is the strictest possible policy, and dropping the
+      // hostile id is the common case; both must survive traversal.
+      expect(() => sanitize(html, [])).not.toThrow();
+      expect(() => sanitize(html, ["form", "input", "div", "template"])).not.toThrow();
+    });
+  }
+
+  test("a form control named 'content' cannot misdirect template traversal", () => {
+    // `form.content` resolves to the clobbering <input>, not a
+    // DocumentFragment. Traversal must ignore it rather than descend into it.
+    const output = sanitize("<form><input name=content></form>", ["form", "input"]);
+    expect(() => sanitize(output, ["form", "input"])).not.toThrow();
+  });
+
+  test("template content is still traversed", () => {
+    const output = sanitize("<template><b>1</b><b>2</b></template><b>3</b>", ["template", "b"], {});
+    expect((output.match(/<b>/g) ?? []).length).toBe(1);
+  });
+
+  // Residual upstream bug, tracked separately from the traversal fix above.
+  // When the rules keep a quote-bearing id on a surviving <form>, DOMPurify's
+  // own walk reads `currentNode.content` and trips the same unescaped-selector
+  // path inside happy-dom. That is happy-dom's bug (HTMLFormElement builds
+  // `input[form="${id}"]` without escaping) and neither DOMPurify nor this
+  // library can intercept the property read. `test.fails` documents it and
+  // will start failing -- prompting removal -- once happy-dom escapes the id.
+  test.fails("KNOWN happy-dom bug: quote-bearing id on an allowed <form> throws via DOMPurify", () => {
+    expect(() => sanitize("<form id=&quot;></form>", ["form", "form|id"])).not.toThrow();
+  });
+});
+
+// Also found by the Jazzer.js fuzz target, and also upstream. happy-dom's
+// HTMLSerializer reads `.content` on any element named "template", but an
+// SVG-namespaced <template> is not an HTMLTemplateElement and has no
+// `.content`, so serialization throws. Reproducible without this library at
+// all:
+//   document.body.innerHTML = "<svg><template>x</template></svg>";
+//   document.documentElement.outerHTML;  // TypeError
+// sanitizeOnce() must serialize, so it cannot sidestep this. It only bites a
+// policy that allows both `svg` and `template`; with either disallowed the
+// element is unwrapped before serialization. It bites whenever `template` is
+// allowed, so an SVG-namespaced <template> survives -- note the element keeps
+// its SVG namespace even when the enclosing <svg> is itself unwrapped, so
+// disallowing `svg` is not enough. `test.fails` will start failing, prompting
+// removal, once happy-dom guards the `.content` read.
+describe("svg-namespaced template serialization", () => {
+  test("is not reachable when the policy unwraps template", () => {
+    expect(sanitize("<svg><template>x</template></svg>", [])).toBe("x");
+    expect(sanitize("<svg><template>x</template></svg>", ["svg"])).toBe("<svg>x</svg>");
+  });
+
+  test.fails("KNOWN happy-dom bug: an allowed svg-namespaced template throws on serialize", () => {
+    expect(() => sanitize("<svg><template>x</template></svg>", ["svg", "template"])).not.toThrow();
+  });
+
+  test.fails("KNOWN happy-dom bug: reachable even when svg itself is unwrapped", () => {
+    expect(() => sanitize("<svg><template>x</template></svg>", ["template"])).not.toThrow();
+  });
+
+  test("a plain (non-namespaced) template still serializes", () => {
+    expect(() => sanitize("<template>x</template>", ["template"])).not.toThrow();
+  });
+});
+
+// Found by the Jazzer.js fuzz target's document-derived rule mode
+// (fuzz/sanitize.fuzz.js): rules generated straight from a mutator-produced
+// document, rather than a small fixed pool, can name a tag matching an
+// inherited Object.prototype property.
+//
+// `COMMON_ATTRS` used to be a plain object literal indexed by tag name.
+// `COMMON_ATTRS[tag]` for a tag like "constructor" or "toString" doesn't
+// return undefined -- it falls through to the inherited prototype value
+// (e.g. the `Object` constructor function itself), which is truthy, so the
+// code proceeded to `for (const attr of common)` and threw because a
+// function isn't iterable. Reachable with any policy that allows such a tag
+// and has allowCommonAttributes enabled -- a denial-of-service on untrusted
+// HTML containing that tag, regardless of what else the policy allows.
+describe("common-attribute lookup is robust against Object.prototype tag names", () => {
+  const PROTOTYPE_COLLIDING_TAGS = [
+    "constructor",
+    "toString",
+    "valueOf",
+    "hasOwnProperty",
+    "isPrototypeOf",
+    "propertyIsEnumerable",
+    "toLocaleString"
+  ];
+
+  for (const tag of PROTOTYPE_COLLIDING_TAGS) {
+    test(`allowing <${tag}> with allowCommonAttributes does not throw`, () => {
+      expect(() =>
+        sanitize(`<${tag}>x</${tag}>`, [tag], { allowCommonAttributes: true })
+      ).not.toThrow();
+    });
+  }
 });

@@ -103,11 +103,15 @@ export type DomEnvironment = {
   onPassStart?(): void;
 };
 
-const COMMON_ATTRS: Record<string, string[]> = {
-  a: ["href", "title", "target", "rel"],
-  img: ["src", "alt", "title", "width", "height"],
-  html: ["lang"]
-};
+// Map, not a plain object: a plain object's bracket lookup falls through to
+// inherited Object.prototype properties for tags like "constructor" or
+// "toString", returning a truthy non-array (e.g. the Object constructor
+// function) instead of undefined and crashing the `for...of` below.
+const COMMON_ATTRS: Map<string, string[]> = new Map([
+  ["a", ["href", "title", "target", "rel"]],
+  ["img", ["src", "alt", "title", "width", "height"]],
+  ["html", ["lang"]]
+]);
 const COMMON_GLOBAL_ATTRS = ["class", "id"];
 const STRUCTURAL_TAGS = new Set(["html", "head", "body"]);
 const URL_ATTRS = new Set([
@@ -405,7 +409,7 @@ export function createSanitizerFromEnvironment(env: DomEnvironment): Sanitizer {
       for (const attr of COMMON_GLOBAL_ATTRS) {
         allowedAttrs.add(attr);
       }
-      for (const attrs of Object.values(COMMON_ATTRS)) {
+      for (const attrs of COMMON_ATTRS.values()) {
         for (const attr of attrs) {
           allowedAttrs.add(attr);
         }
@@ -483,6 +487,16 @@ function collectElements(element: Element, out: Element[]): void {
   for (const child of Array.from(element.children)) {
     collectElements(child, out);
   }
+  // Only <template> has a `.content` fragment. Reading `.content` on any other
+  // element is unsafe: HTMLFormElement exposes its controls as named
+  // properties, so `form.content` performs a named-item lookup rather than
+  // returning undefined. happy-dom implements that lookup by building a CSS
+  // selector from the form's id, so an id of `"` produces `input[form="""]` --
+  // an invalid selector -- and the resulting DOMException escapes sanitize()
+  // even under an empty rule list. A form control named "content" would also
+  // shadow the property and misdirect traversal. `tagName` is a genuine
+  // prototype accessor and cannot be clobbered, so gate on it.
+  if (element.tagName.toLowerCase() !== "template") return;
   const content = (element as Partial<HTMLTemplateElement>).content;
   if (content && typeof (content as DocumentFragment).children !== "undefined") {
     for (const child of Array.from((content as DocumentFragment).children)) {
@@ -539,7 +553,7 @@ function filterAttributes(
     for (const attr of COMMON_GLOBAL_ATTRS) {
       allowedAttrs.add(attr);
     }
-    const common = COMMON_ATTRS[tag];
+    const common = COMMON_ATTRS.get(tag);
     if (common) {
       for (const attr of common) {
         allowedAttrs.add(attr);
@@ -625,7 +639,12 @@ function filterInlineStyle(tag: string, value: string, styleAllowlist: Map<strin
 function isDangerousUrl(value: string, allowSafeDataImage = false): boolean {
   const decoded = decodeNumericCharacterReferences(value);
   const compact = decoded.replace(/[\u0000-\u001F\u007F\s]+/g, "").toLowerCase();
-  if (compact.startsWith("javascript:")) return true;
+  // vbscript: is IE-only and long dead, but blocking it here -- rather than
+  // leaning on DOMPurify's default scheme regex to reject it incidentally --
+  // is free, and the fuzz target found a malformed multi-candidate srcset
+  // shape where DOMPurify's own srcset validation let a vbscript: candidate
+  // through while an otherwise-identical javascript: one was caught.
+  if (compact.startsWith("javascript:") || compact.startsWith("vbscript:")) return true;
   if (compact.startsWith("data:")) {
     return !(allowSafeDataImage && isSafeDataImageUrl(compact));
   }

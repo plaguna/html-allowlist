@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased
+
+### Security
+
+- `filterAttributes` looked up `allowCommonAttributes` defaults with a plain
+  object keyed by tag name (`COMMON_ATTRS[tag]`). For a tag name matching an
+  inherited `Object.prototype` property -- `constructor`, `toString`,
+  `valueOf`, `hasOwnProperty`, and others -- the lookup returned that
+  inherited value (e.g. the `Object` constructor function) instead of
+  `undefined`, and the subsequent `for...of` over it threw `TypeError:
+  ... is not iterable`. Reachable as a denial-of-service on any caller with
+  `allowCommonAttributes: true` and a policy allowing such a tag, triggered
+  purely by attacker-controlled HTML content (e.g. `<constructor>`).
+  `COMMON_ATTRS` is now a `Map`, consistent with the rest of the compiled
+  policy's internals. Found by the fuzz target's new document-derived rule
+  mode (see `fuzz/sanitize.fuzz.js`), which builds rules directly from
+  mutator-produced HTML instead of a small fixed pool.
+- `isDangerousUrl` checked `javascript:` and `data:` but not `vbscript:`,
+  relying on DOMPurify's default scheme regex to reject it incidentally.
+  That held for a single-candidate `srcset` value, but a malformed
+  multi-candidate one let a `vbscript:` entry through DOMPurify's own
+  `srcset` validation while an otherwise-identical `javascript:` entry in
+  the same shape was still caught -- so the backstop wasn't reliable.
+  `vbscript:` is IE-only and long dead, but the check is free and now runs
+  in our own pre-filter instead of depending on DOMPurify's incidental
+  behavior. Found by the fuzz target using a hand-crafted seed
+  (`fuzz/generate-corpus.js`) exercising a mixed-safety `srcset` value.
+
 ## 1.0.0 — 2026-07-08
 
 First stable release. The rule language (multiset tag counts, `tag|attr`,
