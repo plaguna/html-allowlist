@@ -1,0 +1,8 @@
+homepage: "https://github.com/plaguna/html-allowlist"
+main_repo: "https://github.com/plaguna/html-allowlist"
+language: javascript
+fuzzing_engines:
+  - libfuzzer
+sanitizers:
+  - none
+primary_contact: "pedro@laguna.es"

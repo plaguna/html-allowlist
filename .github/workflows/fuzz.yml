@@ -1,0 +1,55 @@
+name: fuzz
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: "Minutes to fuzz the sanitize target"
+        default: "10"
+  schedule:
+    # Weekly coverage-guided fuzzing (Jazzer.js). Deliberately not run on
+    # push/PR: fuzzing time budgets don't belong on the commit critical path;
+    # the fast fast-check properties in `npm test` cover that.
+    - cron: "0 7 * * 1"
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      # No `--sync`: happy-dom's WeakRef-retained nodes are only collected when
+      # the job ends, so synchronous fuzzing grows RSS until a spurious OOM.
+      # See the comment at the top of fuzz/sanitize.fuzz.js.
+      - name: Fuzz sanitize()
+        run: |
+          mkdir -p fuzz/generated/sanitize
+          npx jazzer fuzz/sanitize.fuzz.js fuzz/generated/sanitize fuzz/corpus/sanitize -- \
+            -dict=fuzz/sanitize.dict -max_len=4096 -rss_limit_mb=4096 \
+            -max_total_time=$(( 60 * ${{ github.event.inputs.minutes || 10 }} ))
+      - name: Fuzz compileRules()
+        run: |
+          mkdir -p fuzz/generated/compile-rules
+          npx jazzer fuzz/compile-rules.fuzz.js fuzz/generated/compile-rules fuzz/corpus/compile-rules --sync -- \
+            -max_len=1024 -max_total_time=120
+      - name: Upload reproducers on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-reproducers
+          # Jazzer.js/libFuzzer write crash-*/timeout-*/oom-* reproducer files
+          # into the working directory.
+          path: |
+            crash-*
+            timeout-*
+            oom-*
+            slow-unit-*
+          if-no-files-found: ignore

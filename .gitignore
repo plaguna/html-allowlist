@@ -4,3 +4,9 @@ node_modules
 .DS_Store
 *.log
 *.tgz
+# Fuzzing artifacts (Jazzer.js / libFuzzer)
+fuzz/generated/
+crash-*
+timeout-*
+slow-unit-*
+oom-*
