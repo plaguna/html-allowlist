@@ -42,7 +42,7 @@ jobs:
             -max_len=1024 -max_total_time=120
       - name: Upload reproducers on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fuzz-reproducers
           # Jazzer.js/libFuzzer write crash-*/timeout-*/oom-* reproducer files
