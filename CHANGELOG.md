@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.2 — 2026-08-26
+
+### Maintenance
+
+- Routine dependency updates: `dompurify` 3.4.11 → 3.4.14, `postcss` 8.5.16 →
+  8.5.26, `happy-dom` 20.10.6 → 20.11.2, `typescript` 6.0.2 → 7.0.2,
+  `@types/node` 25.5.0 → 26.2.0, `vitest` 4.1.0 → 4.1.11, `fast-check` 4.6.0
+  → 4.9.0, plus the npm_and_yarn group and `actions/checkout` CI bumps. No
+  behavior changes to the sanitizer itself; `dompurify` and `postcss` stayed
+  within their existing declared `^` ranges.
+
 ## 1.0.1 — 2026-07-09
 
 ### Security
