@@ -49,7 +49,8 @@
     "test:watch": "vitest",
     "fuzz": "npm run build && mkdir -p fuzz/generated/sanitize && jazzer fuzz/sanitize.fuzz.js fuzz/generated/sanitize fuzz/corpus/sanitize -- -dict=fuzz/sanitize.dict -max_len=4096 -rss_limit_mb=4096",
     "fuzz:rules": "npm run build && mkdir -p fuzz/generated/compile-rules && jazzer fuzz/compile-rules.fuzz.js fuzz/generated/compile-rules fuzz/corpus/compile-rules --sync -- -max_len=1024",
-    "fuzz:smoke": "npm run build && mkdir -p fuzz/generated/sanitize fuzz/generated/compile-rules && jazzer fuzz/sanitize.fuzz.js fuzz/generated/sanitize fuzz/corpus/sanitize -- -dict=fuzz/sanitize.dict -max_len=4096 -rss_limit_mb=4096 -max_total_time=60 && jazzer fuzz/compile-rules.fuzz.js fuzz/generated/compile-rules fuzz/corpus/compile-rules --sync -- -max_len=1024 -max_total_time=30"
+    "fuzz:smoke": "npm run build && mkdir -p fuzz/generated/sanitize fuzz/generated/compile-rules && jazzer fuzz/sanitize.fuzz.js fuzz/generated/sanitize fuzz/corpus/sanitize -- -dict=fuzz/sanitize.dict -max_len=4096 -rss_limit_mb=4096 -max_total_time=60 && jazzer fuzz/compile-rules.fuzz.js fuzz/generated/compile-rules fuzz/corpus/compile-rules --sync -- -max_len=1024 -max_total_time=30",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "dompurify": "^3.4.17",

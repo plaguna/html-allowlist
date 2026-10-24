@@ -25,7 +25,7 @@ const attrPairArb = fc.tuple(
   )
 );
 
-const htmlNodeArb: fc.Arbitrary<string> = fc.letrec((tie) => ({
+const htmlNodeArb = fc.letrec<{ text: string; element: string; node: string }>((tie) => ({
   text: fc.constantFrom(...TEXT_TOKENS),
   element: fc.record({
     tag: fc.constantFrom(...SAFE_TAGS),
