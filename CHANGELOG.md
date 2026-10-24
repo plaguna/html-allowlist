@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.1.0 — 2026-10-24
+
+### Security
+
+- Raised the minimum runtime dependency versions so installs can no longer
+  resolve releases with known advisories:
+  - `dompurify` `^3.4.11` → `^3.4.17`, past
+    [GHSA-p98j-92pf-mc4p](https://github.com/advisories/GHSA-p98j-92pf-mc4p)
+    (low; detached subtrees keeping event handlers when an `afterSanitize`
+    hook removes nodes under `IN_PLACE`).
+  - `postcss` `^8.4.47` → `^8.5.31`, which requires `source-map-js`
+    `^1.2.2`, past
+    [GHSA-68fv-2mgg-jv7q](https://github.com/advisories/GHSA-68fv-2mgg-jv7q)
+    (high; event-loop DoS via indexed source-map section offsets).
+
+  Neither is reachable through html-allowlist itself: the sanitizer does not
+  use DOMPurify's `IN_PLACE` mode or hooks, and never parses source maps.
+  The floors are raised so dependency scanners stay clean and so a
+  consumer's lockfile can't pin the vulnerable versions underneath us.
+- Dev-only advisories cleared: `happy-dom` 20.11.2 → 21.0.4 (upstream code
+  injection, SSRF and cookie-scope fixes), `browserslist` 4.28.5 → 4.28.9,
+  `baseline-browser-mapping`, `vite` 8.2.2 → 8.3.5, `vitest` 4.1.11 →
+  4.1.12 (`@vitest/mocker` advisories), and `tar`. `npm audit` reports 0
+  vulnerabilities.
+
+No behavior changes to the sanitizer. The `happy-dom` peer range
+(`>=20.0.0`) is unchanged; the test suite now runs against 21.x.
+
 ## 1.0.2 — 2026-08-26
 
 ### Maintenance

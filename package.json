@@ -1,6 +1,6 @@
 {
   "name": "html-allowlist",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "HTML sanitizer with an explicit allowlist rule language",
   "license": "MIT",
   "author": "Pedro Laguna <plaguna@users.noreply.github.com>",
@@ -52,8 +52,8 @@
     "fuzz:smoke": "npm run build && mkdir -p fuzz/generated/sanitize fuzz/generated/compile-rules && jazzer fuzz/sanitize.fuzz.js fuzz/generated/sanitize fuzz/corpus/sanitize -- -dict=fuzz/sanitize.dict -max_len=4096 -rss_limit_mb=4096 -max_total_time=60 && jazzer fuzz/compile-rules.fuzz.js fuzz/generated/compile-rules fuzz/corpus/compile-rules --sync -- -max_len=1024 -max_total_time=30"
   },
   "dependencies": {
-    "dompurify": "^3.4.11",
-    "postcss": "^8.4.47",
+    "dompurify": "^3.4.17",
+    "postcss": "^8.5.31",
     "postcss-value-parser": "^4.2.0"
   },
   "peerDependencies": {
